@@ -18,7 +18,7 @@ import orderRoutes from './routes/order.route.js';
 const app = express();
 
 app.use(cors({
-  origin: 'https://arrchie-frontend.vercel.app',
+  origin: process.env.FRONTEND_URL || 'https://arrchie-frontend.vercel.app',
   credentials: true
 }));
 
