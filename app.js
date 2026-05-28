@@ -37,5 +37,14 @@ app.get("/", (req, res) => {
   res.send("API is running");
 });
 
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Express Global Error Handler:", err);
+  res.status(err.status || 500).json({
+    message: err.message || "An unexpected error occurred",
+    error: err.toString()
+  });
+});
+
 export default app;
 

@@ -56,19 +56,58 @@ export async function createProduct(req, res) {
   try {
     const { name, description, price, category, stockQuantity, brand, capacity, material, availabilityStatus } = req.body;
     
-    // Use uploaded file path if present, otherwise fall back to URL from body
-    let imageValue = req.body.productImage || '';
-    if (req.file) {
-      imageValue = `/uploads/${req.file.filename}`;
+    let images = [];
+    
+    // 1. Add Cloudinary URLs if any files were uploaded
+    if (req.cloudinaryUrls && req.cloudinaryUrls.length > 0) {
+      images = [...req.cloudinaryUrls];
     }
     
+    // 2. Add URLs sent via the productImages body field
+    if (req.body.productImages) {
+      try {
+        const parsed = typeof req.body.productImages === 'string'
+          ? JSON.parse(req.body.productImages)
+          : req.body.productImages;
+        if (Array.isArray(parsed)) {
+          images = [...images, ...parsed];
+        } else if (typeof parsed === 'string') {
+          images.push(parsed);
+        }
+      } catch (e) {
+        // If not JSON, try parsing as a comma-separated list
+        if (typeof req.body.productImages === 'string') {
+          const splitUrls = req.body.productImages.split(',').map(u => u.trim()).filter(Boolean);
+          images = [...images, ...splitUrls];
+        }
+      }
+    }
+    
+    // Fallback/compatibility check for single productImage field
+    if (req.body.productImage) {
+      images.push(req.body.productImage);
+    }
+    if (req.file && req.file.cloudinaryUrl) {
+      images.push(req.file.cloudinaryUrl);
+    }
+    
+    // Clean and de-duplicate the list of image URLs
+    images = [...new Set(images.filter(Boolean))];
+    
+    // Assign primary image (productImage) to the first image or fallback default
+    const primaryImage = images[0] || 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&q=80&w=600';
+    if (images.length === 0) {
+      images.push(primaryImage);
+    }
+
     const product = new Product({
       name,
       description,
       price,
       category,
       stockQuantity,
-      productImage: imageValue,
+      productImage: primaryImage,
+      productImages: images,
       brand,
       capacity,
       material,
@@ -100,11 +139,45 @@ export async function updateProduct(req, res) {
     product.capacity = capacity !== undefined ? capacity : product.capacity;
     product.material = material !== undefined ? material : product.material;
     
-    // Update image: prioritize uploaded file, then URL from body
-    if (req.file) {
-      product.productImage = `/uploads/${req.file.filename}`;
+    // Manage product images array
+    let images = [];
+    
+    // 1. Gather existing images / text-input images from body
+    if (req.body.productImages !== undefined) {
+      try {
+        const parsed = typeof req.body.productImages === 'string'
+          ? JSON.parse(req.body.productImages)
+          : req.body.productImages;
+        if (Array.isArray(parsed)) {
+          images = [...parsed];
+        } else if (typeof parsed === 'string') {
+          images = parsed.split(',').map(u => u.trim()).filter(Boolean);
+        }
+      } catch (e) {
+        if (typeof req.body.productImages === 'string') {
+          images = req.body.productImages.split(',').map(u => u.trim()).filter(Boolean);
+        }
+      }
+    } else {
+      // If productImages wasn't sent, keep the existing product images
+      images = product.productImages && product.productImages.length > 0 ? [...product.productImages] : [product.productImage];
+    }
+    
+    // 2. Append new Cloudinary uploaded files
+    if (req.cloudinaryUrls && req.cloudinaryUrls.length > 0) {
+      images = [...images, ...req.cloudinaryUrls];
+    }
+    
+    // De-duplicate and filter
+    images = [...new Set(images.filter(Boolean))];
+    
+    if (images.length > 0) {
+      product.productImages = images;
+      product.productImage = images[0];
     } else if (req.body.productImage !== undefined) {
+      // Fallback compatibility with single productImage
       product.productImage = req.body.productImage;
+      product.productImages = [req.body.productImage];
     }
     
     if (stockQuantity !== undefined) {
